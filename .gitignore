@@ -7,10 +7,6 @@ temp/
 # Log files
 *.log
 
-# State files (may contain sensitive progress)
-scraper_state.json
-gmb_checker_state.json
-
 # IDE
 .idea/
 .vscode/
