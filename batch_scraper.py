@@ -111,31 +111,56 @@ def build_grid_from_bounds(center_lat, center_lng, city_zoom):
 
 def detect_city_bounds(page, city, state):
     """
-    Search 'City, State' on Google Maps and extract center coords + zoom level
-    from the auto-zoomed URL.
+    Search 'City, State' on Google Maps and extract center coords + zoom level.
+    Tries multiple methods: URL check, clicking on the city result, JS extraction.
     Returns (lat, lng, zoom) or (None, None, None) on failure.
     """
     import re as _re
 
-    search_text = f"{city}, {state}"
+    search_text = f"{city}, {state}, India"
     encoded = urllib.parse.quote(search_text)
-    url = f"https://www.google.com/maps/search/{encoded}"
+    url = f"https://www.google.com/maps/place/{encoded}"
 
     page.goto(url, wait_until="domcontentloaded")
-    page.wait_for_timeout(random.randint(4000, 6000))
+    page.wait_for_timeout(random.randint(3000, 4000))
 
-    # Extract coordinates and zoom from the URL
-    # URL format: .../@lat,lng,zoomz/...
-    current_url = page.url
-    match = _re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+),(\d+\.?\d*)z', current_url)
-    if match:
-        lat = float(match.group(1))
-        lng = float(match.group(2))
-        zoom = int(float(match.group(3)))
-        print(f"  🔍 City bounds detected: center=({lat:.4f}, {lng:.4f}), auto-zoom={zoom}")
-        return lat, lng, zoom
+    # Method 1: Extract from URL (works when Google redirects to place page)
+    for attempt in range(3):
+        current_url = page.url
+        match = _re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+),(\d+\.?\d*)z', current_url)
+        if match:
+            lat = float(match.group(1))
+            lng = float(match.group(2))
+            zoom = int(float(match.group(3)))
+            print(f"  🔍 City bounds detected: center=({lat:.4f}, {lng:.4f}), auto-zoom={zoom}")
+            return lat, lng, zoom
+        # Wait a bit more for URL to update
+        page.wait_for_timeout(1500)
 
-    print(f"  ⚠️ Could not detect bounds from URL: {current_url}")
+    # Method 2: Try extracting from page JS (Google Maps stores viewport info)
+    try:
+        coords = page.evaluate("""() => {
+            // Try to get coords from the URL after any JS redirects
+            const url = window.location.href;
+            const match = url.match(/@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+),(\\d+\\.?\\d*)z/);
+            if (match) return { lat: parseFloat(match[1]), lng: parseFloat(match[2]), zoom: parseInt(match[3]) };
+
+            // Try og:image meta tag which often has coords
+            const ogImage = document.querySelector('meta[property="og:image"]');
+            if (ogImage) {
+                const content = ogImage.getAttribute('content');
+                const m = content && content.match(/center=(-?\\d+\\.\\d+)%2C(-?\\d+\\.\\d+)/);
+                if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), zoom: 13 };
+            }
+            return null;
+        }""")
+        if coords:
+            print(f"  🔍 City bounds (JS): center=({coords['lat']:.4f}, {coords['lng']:.4f}), zoom={coords['zoom']}")
+            return coords['lat'], coords['lng'], coords['zoom']
+    except:
+        pass
+
+    print(f"  ⚠️ Could not detect bounds for {city}, {state}")
     return None, None, None
 
 
@@ -179,6 +204,9 @@ class BatchScraper:
         self.existing_phones = set()
         self.existing_names = set()
         self._load_existing_from_db()
+
+        # Track listings that had no phone/website (skip on future encounters)
+        self.skip_no_contact = set()
 
     def _load_existing_from_db(self):
         """Load existing GMB links, phones, and names from DB for fast pre-check"""
@@ -441,7 +469,7 @@ class BatchScraper:
             zoom_url = f"https://www.google.com/maps/@{lat},{lng},{zoom_level}z"
             print(f"  🗺️  Zooming to {zoom_level}z...")
             page.goto(zoom_url, wait_until="domcontentloaded")
-            page.wait_for_timeout(random.randint(3000, 5000))
+            page.wait_for_timeout(random.randint(1500, 2500))
 
             # Search within zoomed area
             try:
@@ -467,10 +495,10 @@ class BatchScraper:
                     page.keyboard.press('Control+a')
                     page.wait_for_timeout(200)
                     search_text = query
-                    page.keyboard.type(search_text, delay=random.randint(30, 80))
+                    page.keyboard.type(search_text, delay=random.randint(20, 50))
                     page.wait_for_timeout(500)
                     page.keyboard.press('Enter')
-                    page.wait_for_timeout(random.randint(4000, 6000))
+                    page.wait_for_timeout(random.randint(2000, 3000))
                     print(f"  ✓ Searched: '{search_text}'")
                 else:
                     print(f"  ⚠️ No search box found")
@@ -507,7 +535,7 @@ class BatchScraper:
             for i in range(scroll_count):
                 try:
                     results_panel.evaluate("el => el.scrollBy({top: 500, behavior: 'smooth'})")
-                    page.wait_for_timeout(random.randint(1500, 3000))
+                    page.wait_for_timeout(random.randint(800, 1500))
                     try:
                         end_text = page.locator('span.HlvSq').inner_text(timeout=1000)
                         if end_text:
@@ -562,20 +590,30 @@ class BatchScraper:
                 except:
                     continue
 
-            # Pre-check: remove listings already in DB (skip without clicking)
+            # Pre-check: remove listings already in DB or known no-contact (skip without clicking)
             pre_dupes = 0
+            pre_skipped = 0
             filtered_listings = []
             for data in listing_data:
+                gmb = data['gmb_link']
                 # Check GMB link/hex ID
-                if self._is_duplicate_precheck(data['gmb_link']):
+                if self._is_duplicate_precheck(gmb):
                     pre_dupes += 1
                 # Check phone from list panel
                 elif data.get('list_phone') and data['list_phone'] in self.existing_phones:
                     pre_dupes += 1
+                # Check if previously found no phone/website
+                elif gmb in self.skip_no_contact:
+                    pre_skipped += 1
                 else:
-                    filtered_listings.append(data)
+                    hex_match = re.search(r'(0x[0-9a-f]+:0x[0-9a-f]+)', gmb)
+                    if hex_match and hex_match.group(1) in self.skip_no_contact:
+                        pre_skipped += 1
+                    else:
+                        filtered_listings.append(data)
 
-            print(f"  📋 {len(listing_data)} relevant ({filtered_out} filtered, {pre_dupes} already in DB)")
+            skip_label = f", {pre_skipped} no-contact" if pre_skipped else ""
+            print(f"  📋 {len(listing_data)} relevant ({filtered_out} filtered, {pre_dupes} in DB{skip_label})")
             print(f"  🆕 {len(filtered_listings)} new to scan")
 
             scraped_count = 0
@@ -589,7 +627,7 @@ class BatchScraper:
                     print(f"\n  [{idx + 1}/{len(filtered_listings)}] {business_name}")
 
                     page.goto(gmb_link, wait_until="domcontentloaded")
-                    page.wait_for_timeout(random.randint(1500, 2500))
+                    page.wait_for_timeout(random.randint(1000, 1500))
 
                     if self.detect_captcha(page):
                         print("  🛑 CAPTCHA on detail page!")
@@ -626,6 +664,10 @@ class BatchScraper:
 
                     if not phone and not website:
                         print(f"    ⚠ Skipping - no phone or website")
+                        self.skip_no_contact.add(gmb_link)
+                        hex_match = re.search(r'(0x[0-9a-f]+:0x[0-9a-f]+)', gmb_link)
+                        if hex_match:
+                            self.skip_no_contact.add(hex_match.group(1))
                         continue
 
                     # Extract coordinates from URL
@@ -679,7 +721,7 @@ class BatchScraper:
                     if phone:
                         print(f"      📞 {phone}")
 
-                    page.wait_for_timeout(random.randint(500, 1000))
+                    page.wait_for_timeout(random.randint(300, 600))
 
                 except Exception as e:
                     print(f"    ✗ Error: {str(e)}")
@@ -883,7 +925,7 @@ class BatchScraper:
 
                         # Delay between zones
                         if len(zoom_points) > 1:
-                            delay = random.randint(3, 8)
+                            delay = random.randint(2, 4)
                             print(f"  ⏳ Waiting {delay}s before next zone...")
                             time.sleep(delay)
 
@@ -978,7 +1020,7 @@ class BatchScraper:
                                 continue
 
                             # Small delay after detection
-                            time.sleep(random.randint(2, 4))
+                            time.sleep(random.randint(1, 2))
 
                         cached = city_bounds_cache.get(cache_key)
                         if not cached:
@@ -1027,7 +1069,7 @@ class BatchScraper:
 
                             # Delay between zones
                             if len(zoom_points) > 1:
-                                delay = random.randint(3, 8)
+                                delay = random.randint(2, 4)
                                 time.sleep(delay)
 
                         # Close context after each city

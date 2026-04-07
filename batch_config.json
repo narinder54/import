@@ -6,8 +6,8 @@
     "Study abroad overseas education consultant"
   ],
   "delays": {
-    "min_seconds": 10,
-    "max_seconds": 30
+    "min_seconds": 5,
+    "max_seconds": 12
   },
   "scrolling": {
     "min_scrolls": 8,
