@@ -2,15 +2,25 @@
   "last_state_index": 0,
   "last_city_index": 0,
   "current_state": "Punjab",
-  "current_city": "Amritsar",
-  "total_scraped": 140,
+  "current_city": "Bathinda",
+  "total_scraped": 235,
   "status": "ready",
   "completed_searches": [
     "Immigration visa consultant|Amritsar|Punjab|sw_11",
     "Immigration visa consultant|Amritsar|Punjab|s_10",
     "Immigration visa consultant|Amritsar|Punjab|se_11",
     "Immigration visa consultant|Amritsar|Punjab|w_01",
-    "Immigration visa consultant|Amritsar|Punjab|center"
+    "Immigration visa consultant|Amritsar|Punjab|center",
+    "Immigration visa consultant|Amritsar|Punjab|e_01",
+    "Immigration visa consultant|Amritsar|Punjab|nw_11",
+    "Immigration visa consultant|Amritsar|Punjab|n_10",
+    "Immigration visa consultant|Amritsar|Punjab|ne_11",
+    "Immigration visa consultant|Bathinda|Punjab|sw_11",
+    "Immigration visa consultant|Bathinda|Punjab|s_10",
+    "Immigration visa consultant|Bathinda|Punjab|se_11",
+    "Immigration visa consultant|Bathinda|Punjab|w_01",
+    "Immigration visa consultant|Bathinda|Punjab|center",
+    "Immigration visa consultant|Bathinda|Punjab|e_01"
   ],
   "current_query": "Immigration visa consultant"
 }

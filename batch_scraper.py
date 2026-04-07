@@ -174,6 +174,44 @@ class BatchScraper:
         if 'completed_searches' not in self.state:
             self.state['completed_searches'] = []
 
+        # Load existing data from DB for fast duplicate pre-check (no click needed)
+        self.existing_gmb_links = set()
+        self.existing_phones = set()
+        self.existing_names = set()
+        self._load_existing_from_db()
+
+    def _load_existing_from_db(self):
+        """Load existing GMB links, phones, and names from DB for fast pre-check"""
+        try:
+            conn = pymysql.connect(**DB_CONFIG)
+            cursor = conn.cursor()
+            cursor.execute("SELECT gmb_link, phone, business_name FROM agents")
+            for row in cursor.fetchall():
+                gmb_link, phone, name = row
+                if gmb_link:
+                    self.existing_gmb_links.add(gmb_link.strip())
+                    hex_match = re.search(r'(0x[0-9a-f]+:0x[0-9a-f]+)', gmb_link)
+                    if hex_match:
+                        self.existing_gmb_links.add(hex_match.group(1))
+                if phone:
+                    self.existing_phones.add(phone.strip())
+                if name:
+                    self.existing_names.add(name.strip().lower())
+            cursor.close()
+            conn.close()
+            print(f"✓ Pre-check loaded: {len(self.existing_gmb_links)} GMB IDs, {len(self.existing_phones)} phones, {len(self.existing_names)} names")
+        except Exception as e:
+            print(f"⚠️ Could not load existing data from DB: {e}")
+
+    def _is_duplicate_precheck(self, gmb_link):
+        """Check if listing already exists in DB by GMB link or hex ID (fast, no click needed)"""
+        if gmb_link in self.existing_gmb_links:
+            return True
+        hex_match = re.search(r'(0x[0-9a-f]+:0x[0-9a-f]+)', gmb_link)
+        if hex_match and hex_match.group(1) in self.existing_gmb_links:
+            return True
+        return False
+
     def load_json(self, filename):
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -507,25 +545,48 @@ class BatchScraper:
                         filtered_out += 1
                         continue
 
+                    # Try to extract phone from listing text (visible without clicking)
+                    list_phone = None
+                    for line in lines:
+                        extracted = self.extract_phone(line)
+                        if extracted:
+                            list_phone = extracted
+                            break
+
                     if gmb_link and business_name:
                         listing_data.append({
                             'gmb_link': gmb_link,
                             'business_name': business_name,
+                            'list_phone': list_phone,
                         })
                 except:
                     continue
 
-            print(f"  📋 {len(listing_data)} relevant ({filtered_out} filtered out)")
+            # Pre-check: remove listings already in DB (skip without clicking)
+            pre_dupes = 0
+            filtered_listings = []
+            for data in listing_data:
+                # Check GMB link/hex ID
+                if self._is_duplicate_precheck(data['gmb_link']):
+                    pre_dupes += 1
+                # Check phone from list panel
+                elif data.get('list_phone') and data['list_phone'] in self.existing_phones:
+                    pre_dupes += 1
+                else:
+                    filtered_listings.append(data)
+
+            print(f"  📋 {len(listing_data)} relevant ({filtered_out} filtered, {pre_dupes} already in DB)")
+            print(f"  🆕 {len(filtered_listings)} new to scan")
 
             scraped_count = 0
 
-            # Visit each listing detail page
-            for idx, data in enumerate(listing_data):
+            # Visit each NEW listing detail page
+            for idx, data in enumerate(filtered_listings):
                 try:
                     business_name = data['business_name']
                     gmb_link = data['gmb_link']
 
-                    print(f"\n  [{idx + 1}/{len(listing_data)}] {business_name}")
+                    print(f"\n  [{idx + 1}/{len(filtered_listings)}] {business_name}")
 
                     page.goto(gmb_link, wait_until="domcontentloaded")
                     page.wait_for_timeout(random.randint(1500, 2500))
@@ -603,6 +664,15 @@ class BatchScraper:
 
                     self.results.append(agent_data)
                     scraped_count += 1
+                    # Add to in-memory sets so duplicates caught within same run
+                    self.existing_gmb_links.add(gmb_link)
+                    hex_match = re.search(r'(0x[0-9a-f]+:0x[0-9a-f]+)', gmb_link)
+                    if hex_match:
+                        self.existing_gmb_links.add(hex_match.group(1))
+                    if phone:
+                        self.existing_phones.add(phone)
+                    if business_name:
+                        self.existing_names.add(business_name.strip().lower())
                     print(f"    ✓ Saved")
                     if address:
                         print(f"      📍 {address}")
