@@ -1,7 +1,9 @@
 {
-  "search_mode": "pincode",
+  "search_mode": "city",
   "queries": [
-    "PTE IELTS Institute"
+    "Immigration visa consultant",
+    "IELTS PTE coaching center",
+    "Study abroad overseas education consultant"
   ],
   "delays": {
     "min_seconds": 10,
@@ -12,19 +14,20 @@
     "max_scrolls": 12
   },
   "headless": false,
+  "use_chrome": true,
   "notification_email": "nssmohlan@gmail.com",
   "send_notifications": true,
   "states_to_scrape": [
-    "Rajasthan",
-    "Haryana",
     "Punjab",
-    "Jammu and Kashmir",
+    "Haryana",
+    "Delhi",
+    "Rajasthan",
+    "Uttar Pradesh",
     "Gujarat",
     "Maharashtra",
     "Karnataka",
     "Tamil Nadu",
     "Telangana",
-    "Uttar Pradesh",
     "West Bengal",
     "Madhya Pradesh",
     "Kerala",
@@ -35,11 +38,11 @@
     "Chhattisgarh",
     "Uttarakhand",
     "Himachal Pradesh",
-    "Delhi",
     "Andhra Pradesh",
     "Goa",
     "Chandigarh",
     "Puducherry",
+    "Jammu and Kashmir",
     "Tripura",
     "Manipur",
     "Meghalaya",
@@ -49,5 +52,5 @@
     "Andaman and Nicobar Islands",
     "Dadra and Nagar Haveli"
   ],
-  "comment": "search_mode: 'pincode' for granular PIN code search (more results), 'city' for city-based search. states_to_scrape: order matters - scraping starts from first state."
+  "comment": "v3: Query-first strategy (one query across all cities before next). 3 combined queries. Big cities get 5 zoom points. use_chrome=true for real Chrome."
 }

@@ -1,8 +1,16 @@
 {
-  "last_state_index": 32,
-  "last_city_index": 1,
-  "current_state": "Dadra and Nagar Haveli",
-  "current_city": "Silvassa",
-  "total_scraped": 4356,
-  "status": "ready"
+  "last_state_index": 0,
+  "last_city_index": 0,
+  "current_state": "Punjab",
+  "current_city": "Amritsar",
+  "total_scraped": 140,
+  "status": "ready",
+  "completed_searches": [
+    "Immigration visa consultant|Amritsar|Punjab|sw_11",
+    "Immigration visa consultant|Amritsar|Punjab|s_10",
+    "Immigration visa consultant|Amritsar|Punjab|se_11",
+    "Immigration visa consultant|Amritsar|Punjab|w_01",
+    "Immigration visa consultant|Amritsar|Punjab|center"
+  ],
+  "current_query": "Immigration visa consultant"
 }
